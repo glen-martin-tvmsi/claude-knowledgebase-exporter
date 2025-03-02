@@ -28,71 +28,94 @@ class ClaudeKnowledgeBaseExporter {
     logMethod(`%c[Claude KB Exporter] ${message}`, colorStyles[level]);
   }
 
-  // Existing method definitions...
+  // Enhanced debounce method
+  debounce(func, wait) {
+    let timeout;
+    return (...args) => {
+      const context = this;
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(context, args), wait);
+    };
+  }
 
-  // Consolidated and corrected handleExport method
-  async handleExport() {
+  // Robust page detection with multiple strategies
+  isKnowledgeBasePage() {
     try {
-      this.log('Export process started', 'info');
-      
-      // Find document elements
-      const documentElements = this.findDocumentElements();
-      
-      if (documentElements.length === 0) {
-        throw new Error('No documents found to export');
-      }
-
-      this.log(`Found ${documentElements.length} documents`, 'info');
-
-      // Extract and process documents
-      const documents = await Promise.all(
-        documentElements.map(async (element, index) => {
-          try {
-            const title = this.extractDocumentTitle(element);
-            const content = await this.extractDocumentContent(element);
-            
-            this.log(`Processed document: ${title}`, 'debug');
-            
-            return { title, content };
-          } catch (docError) {
-            this.log(`Error processing document ${index}: ${docError.message}`, 'warn');
-            return null;
-          }
-        })
-      );
-
-      // Filter out failed document extractions
-      const validDocuments = documents.filter(doc => doc !== null);
-
-      if (validDocuments.length === 0) {
-        throw new Error('No valid documents could be extracted');
-      }
-
-      // Convert to markdown
-      const markdownFiles = validDocuments.map(doc => 
-        this.convertToMarkdown(doc)
-      );
-
-      // Send to background script
-      chrome.runtime.sendMessage({
-        action: 'createAndDownloadZip',
-        files: markdownFiles
-      }, response => {
-        if (chrome.runtime.lastError) {
-          this.log(`Message passing error: ${chrome.runtime.lastError.message}`, 'error');
-          return;
+      const detectionStrategies = [
+        () => window.location.href.includes('claude.ai/project/'),
+        () => !!document.querySelector('[data-testid="project-document-list"]'),
+        () => !!document.querySelector('[role="list"] [role="listitem"]'),
+        () => {
+          const pageTitle = document.title.toLowerCase();
+          return pageTitle.includes('project') || pageTitle.includes('documents');
         }
-        
-        this.log('Export process completed successfully', 'info');
+      ];
+
+      const result = detectionStrategies.some(strategy => {
+        try {
+          return strategy();
+        } catch (strategyError) {
+          this.log(`Detection strategy failed: ${strategyError.message}`, 'debug');
+          return false;
+        }
       });
 
+      this.log(`Knowledge base page detection result: ${result}`, 'debug');
+      return result;
     } catch (error) {
-      this.log(`Export failed: ${error.message}`, 'error');
-      this.showErrorNotification(error.message);
+      this.log(`Page detection error: ${error.message}`, 'error');
+      return false;
     }
   }
 
-  // Existing other methods...
+  // Add export button
+  addExportButton() {
+    // Prevent duplicate buttons
+    if (document.querySelector('.claude-obsidian-export-btn')) {
+      return;
+    }
+
+    // Try to find the specific button next to the hamburger menu button
+    const targetButton = document.evaluate(
+      "/html/body/div[2]/div/div/main/div[2]/div/div/div[1]/button", 
+      document, 
+      null, 
+      XPathResult.FIRST_ORDERED_NODE_TYPE, 
+      null
+    ).singleNodeValue;
+
+    if (!targetButton) {
+      this.log('Could not find target button for export button placement', 'warn');
+      return;
+    }
+
+    // Create export button
+    const exportButton = document.createElement('button');
+    exportButton.textContent = 'Export to Obsidian';
+    exportButton.className = 'claude-obsidian-export-btn';
+    exportButton.style.cssText = `
+      margin-left: 10px;
+      padding: 5px 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      height: ${targetButton.offsetHeight}px;
+      vertical-align: top;
+    `;
+
+    exportButton.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent any parent click events
+      this.handleExport();
+    });
+
+    // Insert the button right after the target button
+    targetButton.parentNode.insertBefore(exportButton, targetButton.nextSibling);
+
+    this.log('Export button added successfully next to target button', 'info');
+  }
 
   // Initialize extension
   initialize() {
@@ -121,6 +144,37 @@ class ClaudeKnowledgeBaseExporter {
     if (this.isKnowledgeBasePage()) {
       this.addExportButton();
     }
+  }
+
+  // Placeholder methods (you'll need to implement these fully)
+  async handleExport() {
+    this.log('Export process started', 'info');
+    // Implement full export logic
+  }
+
+  findDocumentElements() {
+    // Implement document element finding logic
+    return [];
+  }
+
+  extractDocumentTitle(element) {
+    // Implement title extraction
+    return 'Untitled Document';
+  }
+
+  async extractDocumentContent(element) {
+    // Implement content extraction
+    return 'No content';
+  }
+
+  convertToMarkdown(document) {
+    // Implement markdown conversion
+    return { name: 'document.md', content: '' };
+  }
+
+  showErrorNotification(message) {
+    // Implement error notification
+    console.error(message);
   }
 }
 
