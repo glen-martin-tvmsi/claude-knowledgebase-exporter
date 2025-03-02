@@ -1,258 +1,363 @@
-// Content script that runs on the Claude website
+// Enhanced Claude Knowledge Base Exporter Content Script
 
-// DOM Observer to detect page changes
-let pageObserver;
-
-// Initialize the extension
-function initialize() {
-  console.log('Claude Knowledge Base Exporter initializing...');
-  
-  // Stop existing observer if it's running
-  if (pageObserver) {
-    pageObserver.disconnect();
+class ClaudeKnowledgeBaseExporter {
+  constructor() {
+    this.pageObserver = null;
+    this.debugMode = true; // Enable detailed logging
   }
-  
-  // Watch for DOM changes to detect when we navigate to a knowledge base page
-  pageObserver = new MutationObserver(debounce(checkForKnowledgeBase, 1000));
-  pageObserver.observe(document.body, { subtree: true, childList: true });
-  
-  // Also check immediately
-  checkForKnowledgeBase();
-}
 
-// Debounce function to prevent excessive checks
-function debounce(func, wait) {
-  let timeout;
-  return function() {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, arguments), wait);
-  };
-}
+  // Logging method with configurable verbosity
+  log(message, level = 'info') {
+    if (!this.debugMode && level === 'debug') return;
 
-// Check if we're on a knowledge base page
-function checkForKnowledgeBase() {
-  if (isKnowledgeBasePage()) {
-    addExportButton();
+    const levels = {
+      error: console.error,
+      warn: console.warn,
+      info: console.log,
+      debug: console.log
+    };
+
+    const colorStyles = {
+      error: 'color: red; font-weight: bold',
+      warn: 'color: orange',
+      info: 'color: blue',
+      debug: 'color: gray'
+    };
+
+    const logMethod = levels[level] || console.log;
+    logMethod(`%c[Claude KB Exporter] ${message}`, colorStyles[level]);
   }
-}
 
-// Determine if the current page is a knowledge base
-function isKnowledgeBasePage() {
-  // This needs to be adjusted based on Claude's actual URL and DOM structure
-  return window.location.href.includes('claude.ai') && 
-         (document.querySelector('[data-testid="knowledge-base"]') || 
-          document.querySelector('.knowledge-base') ||
-          document.querySelector('.documents-list'));
-}
-
-// Add the export button to the page
-function addExportButton() {
-  // Check if we already added the button
-  if (document.querySelector('.claude-obsidian-export-btn')) {
-    return;
-  }
-  
-  // Look for a suitable container to add our button
-  // These selectors need to be adjusted based on Claude's actual DOM structure
-  const container = document.querySelector('.knowledge-base-header') || 
-                    document.querySelector('[data-testid="kb-header"]') || 
-                    document.querySelector('header');
-  
-  if (!container) {
-    console.log('Claude Knowledge Base Exporter: Could not find suitable container for button');
-    return;
-  }
-  
-  // Create our button
-  const exportButton = document.createElement('button');
-  exportButton.textContent = 'Export to Obsidian';
-  exportButton.className = 'claude-obsidian-export-btn';
-  exportButton.addEventListener('click', handleExport);
-  
-  // Add it to the page
-  container.appendChild(exportButton);
-  
-  console.log('Claude Knowledge Base Exporter: Added export button');
-}
-
-// Handle the export process when button is clicked
-async function handleExport() {
-  try {
-    // Show a loading indicator
-    const statusElement = showStatus('Starting export process...');
-    
-    // Extract documents
-    updateStatus(statusElement, 'Scanning for documents...');
-    const documents = await extractDocuments(statusElement);
-    
-    if (!documents || documents.length === 0) {
-      updateStatus(statusElement, 'No documents found. Please make sure you are on a knowledge base page.', false, true);
-      return;
-    }
-    
-    updateStatus(statusElement, `Found ${documents.length} documents. Converting to Markdown...`);
-    
-    // Convert to markdown
-    const markdownFiles = documents.map(convertToMarkdown);
-    
-    updateStatus(statusElement, 'Creating ZIP file...');
-    
-    // Send to background script to create and download ZIP
-    chrome.runtime.sendMessage({
-      action: 'createAndDownloadZip',
-      files: markdownFiles
-    });
-    
-    // Listen for completion message from background script
-    chrome.runtime.onMessage.addListener(function(message) {
-      if (message.action === 'exportComplete') {
-        if (message.success) {
-          updateStatus(statusElement, 'Export complete! ZIP file downloaded.', true);
-        } else {
-          updateStatus(statusElement, 'Export failed: ' + (message.error || 'Unknown error'), false, true);
-        }
+  // Enhanced debounce with error handling
+  debounce(func, wait) {
+    let timeout;
+    return (...args) => {
+      try {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      } catch (error) {
+        this.log(`Debounce error: ${error.message}`, 'error');
       }
-    });
-  } catch (error) {
-    console.error('Export failed:', error);
-    showStatus('Export failed: ' + error.message, false, true);
+    };
   }
-}
 
-// Extract all documents from the page
-async function extractDocuments(statusElement) {
-  // This function needs to be customized based on Claude's actual structure
-  // These are placeholder selectors - you'll need to update them
-  const documentElements = document.querySelectorAll('[data-testid="document-item"]') || 
-                           document.querySelectorAll('.document-list-item') ||
-                           document.querySelectorAll('.kb-document');
-  
-  if (!documentElements || documentElements.length === 0) {
-    console.log('No document elements found');
+  // Robust page detection with multiple strategies
+  isKnowledgeBasePage() {
+    try {
+      const detectionStrategies = [
+        () => window.location.href.includes('claude.ai'),
+        () => !!document.querySelector('[data-testid="knowledge-base"]'),
+        () => !!document.querySelector('.knowledge-base'),
+        () => !!document.querySelector('.documents-list'),
+        () => {
+          // More advanced detection if needed
+          const pageTitle = document.title.toLowerCase();
+          return pageTitle.includes('knowledge base') || pageTitle.includes('documents');
+        }
+      ];
+
+      const result = detectionStrategies.some(strategy => {
+        try {
+          return strategy();
+        } catch (strategyError) {
+          this.log(`Detection strategy failed: ${strategyError.message}`, 'debug');
+          return false;
+        }
+      });
+
+      this.log(`Knowledge base page detection result: ${result}`, 'debug');
+      return result;
+    } catch (error) {
+      this.log(`Page detection error: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
+  // More robust document element selection
+  findDocumentElements() {
+    const selectorStrategies = [
+      '[data-testid="document-item"]',
+      '.document-list-item',
+      '.kb-document',
+      '[role="listitem"] .document-card',
+      'div[data-state="closed"] > div'
+    ];
+
+    for (const selector of selectorStrategies) {
+      const elements = document.querySelectorAll(selector);
+      this.log(`Trying selector: ${selector}, Found: ${elements.length}`, 'debug');
+      
+      if (elements.length > 0) {
+        return Array.from(elements);
+      }
+    }
+
+    this.log('No document elements found using any strategy', 'warn');
     return [];
   }
-  
-  const documents = [];
-  let processedCount = 0;
-  
-  // Process each document
-  for (const element of Array.from(documentElements)) {
-    try {
-      // Update status
-      processedCount++;
-      updateStatus(statusElement, `Extracting document ${processedCount}/${documentElements.length}...`);
+
+  // Advanced content extraction with multiple fallback methods
+  async extractDocumentContent(element) {
+    const extractionStrategies = [
+      // Strategy 1: Direct text content
+      () => {
+        const textElements = element.querySelectorAll('p, h1, h2, h3, span');
+        return Array.from(textElements)
+          .map(el => el.textContent.trim())
+          .filter(text => text.length > 0)
+          .join('\n\n');
+      },
       
-      // Extract document data - update these selectors based on actual structure
-      const title = element.querySelector('.document-title')?.textContent.trim() || 
-                  element.querySelector('[data-testid="document-title"]')?.textContent.trim() ||
-                  `Document ${processedCount}`;
+      // Strategy 2: Data attributes
+      () => {
+        const contentAttr = element.getAttribute('data-content') || 
+                             element.getAttribute('data-document-content');
+        return contentAttr || '';
+      },
       
-      // For content, we may need to click the document to view it
-      // This is a simplistic approach - may need refinement
-      element.click();
-      
-      // Wait for content to load
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Get content - update selector based on actual structure
-      const contentElement = document.querySelector('.document-content') ||
-                             document.querySelector('[data-testid="document-content"]');
-      
-      const content = contentElement ? contentElement.textContent.trim() : 'No content available';
-      
-      // Add to our document list
-      documents.push({
-        title: title,
-        content: content
-      });
-      
-      // Go back to list view if needed
-      const backButton = document.querySelector('.back-button') ||
-                          document.querySelector('[data-testid="back-button"]');
-      if (backButton) {
-        backButton.click();
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // Strategy 3: Aria labels
+      () => {
+        const ariaLabel = element.getAttribute('aria-label');
+        return ariaLabel || '';
       }
+    ];
+
+    for (const strategy of extractionStrategies) {
+      try {
+        const content = strategy();
+        if (content && content.length > 10) {
+          return content;
+        }
+      } catch (error) {
+        this.log(`Content extraction strategy failed: ${error.message}`, 'debug');
+      }
+    }
+
+    return 'No content could be extracted';
+  }
+
+  // Title extraction with multiple fallback methods
+  extractDocumentTitle(element) {
+    const titleSelectors = [
+      '[data-testid="document-title"]',
+      '.document-title',
+      'h1',
+      'h2',
+      '[aria-label]'
+    ];
+
+    for (const selector of titleSelectors) {
+      const titleElement = element.querySelector(selector);
+      if (titleElement) {
+        const title = titleElement.textContent.trim();
+        if (title) return title;
+      }
+    }
+
+    return `Untitled Document ${Date.now()}`;
+  }
+
+  // Convert document to markdown with enhanced frontmatter
+  convertToMarkdown(document) {
+    const frontmatter = [
+      '---',
+      `title: "${document.title.replace(/"/g, '\\"')}"`,
+      'project: "Claude Knowledge Base"',
+      `date: "${new Date().toISOString()}"`,
+      'tags:',
+      '  - exported',
+      '  - claude-ai',
+      '---',
+      '',
+      document.content
+    ].join('\n');
+
+    const sanitizedFilename = document.title
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .trim()
+      .substring(0, 100) + '.md';
+
+    return {
+      name: sanitizedFilename,
+      content: frontmatter
+    };
+  }
+
+  // Main export handler with comprehensive error management
+  async handleExport() {
+    try {
+      this.log('Export process started', 'info');
+      
+      // Find document elements
+      const documentElements = this.findDocumentElements();
+      
+      if (documentElements.length === 0) {
+        throw new Error('No documents found to export');
+      }
+
+      this.log(`Found ${documentElements.length} documents`, 'info');
+
+      // Extract and process documents
+      const documents = await Promise.all(
+        documentElements.map(async (element, index) => {
+          try {
+            const title = this.extractDocumentTitle(element);
+            const content = await this.extractDocumentContent(element);
+            
+            this.log(`Processed document: ${title}`, 'debug');
+            
+            return { title, content };
+          } catch (docError) {
+            this.log(`Error processing document ${index}: ${docError.message}`, 'warn');
+            return null;
+          }
+        })
+      );
+
+      // Filter out failed document extractions
+      const validDocuments = documents.filter(doc => doc !== null);
+
+      if (validDocuments.length === 0) {
+        throw new Error('No valid documents could be extracted');
+      }
+
+      // Convert to markdown
+      const markdownFiles = validDocuments.map(doc => 
+        this.convertToMarkdown(doc)
+      );
+
+      // Send to background script
+      chrome.runtime.sendMessage({
+        action: 'createAndDownloadZip',
+        files: markdownFiles
+      }, response => {
+        if (chrome.runtime.lastError) {
+          this.log(`Message passing error: ${chrome.runtime.lastError.message}`, 'error');
+          return;
+        }
+        
+        this.log('Export process completed successfully', 'info');
+      });
+
     } catch (error) {
-      console.error(`Error extracting document ${processedCount}:`, error);
+      this.log(`Export failed: ${error.message}`, 'error');
+      // Optionally show user-friendly error notification
+      this.showErrorNotification(error.message);
     }
   }
-  
-  return documents;
-}
 
-// Convert a document to markdown format
-function convertToMarkdown(document) {
-  // Create frontmatter
-  const frontmatter = [
-    '---',
-    `title: "${document.title.replace(/"/g, '\\"')}"`,
-    'project: "Claude Knowledge Base"',
-    `date: "${new Date().toISOString().split('T')[0]}"`,
-    '---',
-    ''
-  ].join('\n');
-  
-  // Format content as markdown
-  const markdown = document.content;
-  
-  // Sanitize filename
-  const filename = document.title
-    .replace(/[\\/:*?"<>|]/g, '_') // Replace invalid filename characters
-    .trim()
-    .substring(0, 100) // Limit filename length
-    + '.md';
-  
-  return {
-    name: filename,
-    content: frontmatter + markdown
-  };
-}
+  // User-friendly error notification
+  showErrorNotification(message) {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: #ff4d4f;
+      color: white;
+      padding: 15px;
+      border-radius: 5px;
+      z-index: 10000;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    `;
+    notification.textContent = `Export Error: ${message}`;
+    document.body.appendChild(notification);
 
-// Show a status message
-function showStatus(message, isComplete = false, isError = false) {
-  let statusElement = document.querySelector('.claude-export-status');
-  
-  if (!statusElement) {
-    statusElement = document.createElement('div');
-    statusElement.className = 'claude-export-status';
-    document.body.appendChild(statusElement);
-  }
-  
-  statusElement.textContent = message;
-  statusElement.className = 'claude-export-status' + 
-    (isComplete ? ' complete' : '') + 
-    (isError ? ' error' : '');
-  
-  if (isComplete || isError) {
     setTimeout(() => {
-      statusElement.remove();
+      document.body.removeChild(notification);
     }, 5000);
   }
-  
-  return statusElement;
-}
 
-// Update an existing status element
-function updateStatus(element, message, isComplete = false, isError = false) {
-  if (!element) return showStatus(message, isComplete, isError);
-  
-  element.textContent = message;
-  
-  if (isComplete) element.classList.add('complete');
-  if (isError) element.classList.add('error');
-  
-  if (isComplete || isError) {
-    setTimeout(() => {
-      element.remove();
-    }, 5000);
+  // Initialize extension
+  initialize() {
+    this.log('Claude Knowledge Base Exporter initializing', 'info');
+
+    // Clean up existing observer
+    if (this.pageObserver) {
+      this.pageObserver.disconnect();
+    }
+
+    // Create new observer with enhanced detection
+    this.pageObserver = new MutationObserver(
+      this.debounce(() => {
+        if (this.isKnowledgeBasePage()) {
+          this.addExportButton();
+        }
+      }, 1000)
+    );
+
+    this.pageObserver.observe(document.body, { 
+      subtree: true, 
+      childList: true 
+    });
+
+    // Initial check
+    if (this.isKnowledgeBasePage()) {
+      this.addExportButton();
+    }
   }
-  
-  return element;
+
+  // Add export button with improved positioning
+  addExportButton() {
+    // Prevent duplicate buttons
+    if (document.querySelector('.claude-obsidian-export-btn')) {
+      return;
+    }
+
+    const possibleContainers = [
+      '.knowledge-base-header',
+      '[data-testid="kb-header"]',
+      'header',
+      '.app-header',
+      'nav'
+    ];
+
+    let container = null;
+    for (const selector of possibleContainers) {
+      container = document.querySelector(selector);
+      if (container) break;
+    }
+
+    if (!container) {
+      this.log('Could not find suitable container for export button', 'warn');
+      return;
+    }
+
+    const exportButton = document.createElement('button');
+    exportButton.textContent = 'Export to Obsidian';
+    exportButton.className = 'claude-obsidian-export-btn';
+    exportButton.style.cssText = `
+      margin-left: 10px;
+      padding: 5px 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    `;
+
+    exportButton.addEventListener('click', () => this.handleExport());
+    container.appendChild(exportButton);
+
+    this.log('Export button added successfully', 'info');
+  }
 }
 
-// Initialize the extension when the page loads
-document.addEventListener('DOMContentLoaded', initialize);
+// Instantiate and initialize
+const exporter = new ClaudeKnowledgeBaseExporter();
 
-// Also run initialize immediately in case the page is already loaded
-initialize();
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    exporter.initialize();
+  } catch (error) {
+    console.error('Initialization failed:', error);
+  }
+});
+
+// Also run initialize immediately
+try {
+  exporter.initialize();
+} catch (error) {
+  console.error('Immediate initialization failed:', error);
+}
