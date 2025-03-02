@@ -1,89 +1,74 @@
-// Background script that handles ZIP creation and downloading
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'createAndDownloadZip') {
-    // Create a Blob from the files
-    const blob = new Blob([JSON.stringify(request.files)], { type: 'application/json' });
-    
-    // Create download options
-    const downloadOptions = {
-      url: URL.createObjectURL(blob),
-      filename: `claude_export_${new Date().toISOString().replace(/:/g, '-')}.zip`,
-      saveAs: true
-    };
-
-    // Trigger download
-    chrome.downloads.download(downloadOptions, (downloadId) => {
-      if (chrome.runtime.lastError) {
-        console.error('Download failed:', chrome.runtime.lastError);
-      }
-    });
-
-    return true; // Indicates we will send a response asynchronously
-  }
-});
+// Background Service Worker for Claude Knowledge Base Exporter
 
 // Listen for messages from content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'createAndDownloadZip') {
-    // Load JSZip library
-    importScripts('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'createAndDownloadZip') {
+    handleZipCreation(request.files, request.projectName)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => {
+        console.error('Error creating ZIP:', error);
+        sendResponse({ success: false, error: error.message });
+      });
     
-    createAndDownloadZip(message.files, sender.tab.id);
-    return true; // Keep message channel open for async response
+    // Return true to indicate async response
+    return true;
   }
 });
 
-// Create ZIP file with extracted documents and download it
-async function createAndDownloadZip(files, tabId) {
+// Create and download ZIP file
+async function handleZipCreation(files, projectName = '') {
   try {
-    // Create a new ZIP file
+    // Create a new JSZip instance
+    const JSZip = await importJSZip();
     const zip = new JSZip();
     
-    // Create a folder for all files
-    const folder = zip.folder("claude-knowledge-base");
-    
-    // Add each file to the ZIP
+    // Add files to the ZIP
     files.forEach(file => {
-      folder.file(file.name, file.content);
+      zip.file(file.name, file.content);
     });
     
-    // Create an index file
-    const indexContent = [
-      '# Claude Knowledge Base Index',
-      '',
-      'This vault contains all documents exported from Claude Knowledge Base.',
-      '',
-      '## Documents',
-      '',
-      ...files.map(file => `- [[${file.name.replace('.md', '')}]]`)
-    ].join('\n');
+    // Generate ZIP blob
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
     
-    folder.file('00-index.md', indexContent);
+    // Create a download
+    const timestamp = new Date().toISOString().split('T')[0];
+    const zipName = projectName 
+      ? `${projectName}_${timestamp}.zip`
+      : `claude_export_${timestamp}.zip`;
     
-    // Generate the ZIP file
-    const zipBlob = await zip.generateAsync({type: 'blob'});
-    
-    // Download the ZIP file
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    
-    chrome.downloads.download({
+    await chrome.downloads.download({
       url: URL.createObjectURL(zipBlob),
-      filename: `claude-knowledge-base-${timestamp}.zip`,
+      filename: zipName,
       saveAs: true
     });
     
-    // Notify content script of success
-    chrome.tabs.sendMessage(tabId, { 
-      action: 'exportComplete', 
-      success: true 
-    });
+    console.log('ZIP file created and download initiated');
+    
   } catch (error) {
-    console.error('Failed to create ZIP:', error);
-    // Notify content script of failure
-    chrome.tabs.sendMessage(tabId, { 
-      action: 'exportComplete', 
-      success: false, 
-      error: error.message 
-    });
+    console.error('ZIP creation failed:', error);
+    throw error;
   }
+}
+
+// Import JSZip library
+async function importJSZip() {
+  return new Promise((resolve, reject) => {
+    try {
+      // Check if JSZip is already defined
+      if (typeof JSZip !== 'undefined') {
+        return resolve(JSZip);
+      }
+      
+      // Dynamically import JSZip
+      importScripts('jszip.min.js');
+      
+      if (typeof JSZip !== 'undefined') {
+        resolve(JSZip);
+      } else {
+        reject(new Error('Failed to load JSZip library'));
+      }
+    } catch (error) {
+      reject(error);
+    }
+  });
 }

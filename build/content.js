@@ -38,10 +38,75 @@ class ClaudeKnowledgeBaseExporter {
     };
   }
 
+  // Get the project name for the ZIP file
+  getProjectName() {
+    try {
+      // Try to get the project name from the heading using XPath
+      const projectNameXPath = "/html/body/div[2]/div/div/main/div[1]/div[1]/div[1]/h1/span";
+      const projectNameResult = document.evaluate(
+        projectNameXPath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      
+      const projectNameElement = projectNameResult.singleNodeValue;
+      
+      if (projectNameElement) {
+        const projectName = projectNameElement.textContent.trim();
+        if (projectName) {
+          // Convert to snake case
+          return projectName
+            .toLowerCase()
+            .replace(/\s+/g, '_')
+            .replace(/[^\w_]/g, '')
+            .replace(/_+/g, '_');
+        }
+      }
+      
+      // Fallback: try other selectors
+      const selectors = [
+        'h1', 
+        '[data-testid="project-title"]',
+        '[role="heading"]'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          const projectName = element.textContent.trim();
+          if (projectName) {
+            return projectName
+              .toLowerCase()
+              .replace(/\s+/g, '_')
+              .replace(/[^\w_]/g, '')
+              .replace(/_+/g, '_');
+          }
+        }
+      }
+      
+      // Extract from URL if all else fails
+      const urlMatch = window.location.href.match(/\/project\/([^/]+)/);
+      if (urlMatch && urlMatch[1]) {
+        return `claude_project_${urlMatch[1].substring(0, 8)}`;
+      }
+    } catch (error) {
+      this.log(`Error getting project name: ${error.message}`, 'warn');
+    }
+    
+    // Default name if all methods fail
+    return `claude_kb_export_${new Date().toISOString().split('T')[0]}`;
+  }
+
   // Main export method
   async handleExport() {
     try {
       this.log('Export process started', 'info');
+      
+      // Get project name for the zip file
+      const projectName = this.getProjectName();
+      this.log(`Exporting project: ${projectName}`, 'info');
       
       // Find document elements with multiple strategies
       let documentElements = this.findDocumentElements();
@@ -155,11 +220,12 @@ class ClaudeKnowledgeBaseExporter {
       // Send to background script for zip creation and download
       chrome.runtime.sendMessage({
         action: 'createAndDownloadZip',
-        files: markdownFiles
+        files: markdownFiles,
+        projectName: projectName
       }, response => {
         if (chrome.runtime.lastError) {
           this.log(`Message passing error: ${chrome.runtime.lastError.message}`, 'error');
-          this.downloadMarkdownFilesDirectly(markdownFiles);
+          this.downloadMarkdownFilesDirectly(markdownFiles, projectName);
           return;
         }
         
@@ -173,7 +239,7 @@ class ClaudeKnowledgeBaseExporter {
   }
 
   // Fallback direct download method using JSZip
-  downloadMarkdownFilesDirectly(files) {
+  downloadMarkdownFilesDirectly(files, projectName) {
     try {
       // Check if JSZip is available
       if (typeof JSZip === 'undefined') {
@@ -193,7 +259,7 @@ class ClaudeKnowledgeBaseExporter {
           const url = URL.createObjectURL(content);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `claude_export_${new Date().toISOString().replace(/:/g, '-')}.zip`;
+          link.download = `${projectName || 'claude_export'}_${new Date().toISOString().split('T')[0]}.zip`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -770,10 +836,8 @@ ${cleanContent}`;
   // Page detection
   isKnowledgeBasePage() {
     const detectionStrategies = [
-      // URL-based detection
+      // URL-based detection - ANY project URL
       () => window.location.href.includes('claude.ai/project/'),
-      () => window.location.href.includes('claude.ai/kb/'),
-      () => window.location.href.includes('documents'),
       
       // Element-based detection
       () => !!document.querySelector('[data-testid="project-document-list"]'),
