@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Claude Knowledge Base Exporter</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 15px;
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      font-size: 16px;
+      margin-top: 0;
+    }
+    .instructions {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .button {
+      background: #5c64ef;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .button:hover {
+      background: #4a51c4;
+    }
+  </style>
+</head>
+<body>
+  <h1>Claude Knowledge Base Exporter</h1>
+  <div class="instructions">
+    <p>This extension allows you to export Claude knowledge base documents to Markdown format for use in Obsidian.</p>
+    <p>To use:</p>
+    <ol>
+      <li>Navigate to your Claude knowledge base</li>
+      <li>Click the "Export to Obsidian" button that appears</li>
+      <li>Wait for the export to complete</li>
+      <li>Extract the ZIP file to your Obsidian vault</li>
+    </ol>
+  </div>
+  <button id="go-to-claude" class="button">Go to Claude</button>
+  <script src="popup.js"></script>
+</body>
+</html>

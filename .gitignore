@@ -1,0 +1,10 @@
+# Chrome Extension Development
+*.pem
+*.crx
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Node modules (if you add them later)
+node_modules/
