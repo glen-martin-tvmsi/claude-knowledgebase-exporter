@@ -1,12 +1,21 @@
 {
   "manifest_version": 3,
   "name": "Claude Knowledge Base Exporter",
-  "version": "1.0",
-  "description": "Export Claude knowledge base documents to Markdown for Obsidian",
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+  "version": "0.1.0",
+  "description": "Export Claude.ai knowledge base documents to Markdown",
+  "permissions": [
+    "activeTab",
+    "downloads"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["jszip.min.js", "content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
@@ -16,22 +25,15 @@
       "128": "icons/icon128.png"
     }
   },
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "downloads"
-  ],
-  "host_permissions": [
-    "https://claude.ai/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
-  "content_scripts": [
+  "web_accessible_resources": [
     {
-      "matches": ["https://claude.ai/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "resources": ["jszip.min.js"],
+      "matches": ["https://claude.ai/*"]
     }
   ]
 }

@@ -1,4 +1,26 @@
 // Background script that handles ZIP creation and downloading
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'createAndDownloadZip') {
+    // Create a Blob from the files
+    const blob = new Blob([JSON.stringify(request.files)], { type: 'application/json' });
+    
+    // Create download options
+    const downloadOptions = {
+      url: URL.createObjectURL(blob),
+      filename: `claude_export_${new Date().toISOString().replace(/:/g, '-')}.zip`,
+      saveAs: true
+    };
+
+    // Trigger download
+    chrome.downloads.download(downloadOptions, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.error('Download failed:', chrome.runtime.lastError);
+      }
+    });
+
+    return true; // Indicates we will send a response asynchronously
+  }
+});
 
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
