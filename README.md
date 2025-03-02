@@ -57,6 +57,14 @@ chmod +x build.sh
 
 MIT License
 
+## Prompt Engineering
+
+This project was developed with Claude AI assistance. If you'd like to contribute:
+
+1. Use Claude 3.7 Sonnet at Normal Thinking Mode with Concise Writing Style
+2. Start with our [Starter Prompt](/prompt_engg/starter_prompt.md) to frame your questions effectively
+3. Focus on specific components (document selection, content extraction, etc.)
+
 ## Credits
 
 Created with assistance from Claude AI
