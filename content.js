@@ -297,32 +297,28 @@ class ClaudeKnowledgeBaseExporter {
     }
   }
 
-  // Add export button with improved positioning
+  // Add export button next to the specified button
   addExportButton() {
     // Prevent duplicate buttons
     if (document.querySelector('.claude-obsidian-export-btn')) {
       return;
     }
 
-    const possibleContainers = [
-      '.knowledge-base-header',
-      '[data-testid="kb-header"]',
-      'header',
-      '.app-header',
-      'nav'
-    ];
+    // Try to find the button using the provided XPath
+    const targetButton = document.evaluate(
+      "/html/body/div[2]/div/div/main/div[2]/div/div/div[1]/button", 
+      document, 
+      null, 
+      XPathResult.FIRST_ORDERED_NODE_TYPE, 
+      null
+    ).singleNodeValue;
 
-    let container = null;
-    for (const selector of possibleContainers) {
-      container = document.querySelector(selector);
-      if (container) break;
-    }
-
-    if (!container) {
-      this.log('Could not find suitable container for export button', 'warn');
+    if (!targetButton) {
+      this.log('Could not find target button for export button placement', 'warn');
       return;
     }
 
+    // Create export button
     const exportButton = document.createElement('button');
     exportButton.textContent = 'Export to Obsidian';
     exportButton.className = 'claude-obsidian-export-btn';
@@ -334,12 +330,20 @@ class ClaudeKnowledgeBaseExporter {
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      font-size: 14px;
+      height: ${targetButton.offsetHeight}px;
+      vertical-align: top;
     `;
 
-    exportButton.addEventListener('click', () => this.handleExport());
-    container.appendChild(exportButton);
+    exportButton.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent any parent click events
+      this.handleExport();
+    });
 
-    this.log('Export button added successfully', 'info');
+    // Insert the button right after the target button
+    targetButton.parentNode.insertBefore(exportButton, targetButton.nextSibling);
+
+    this.log('Export button added successfully next to target button', 'info');
   }
 }
 
