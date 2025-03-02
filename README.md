@@ -1,44 +1,62 @@
 # Claude Knowledge Base Exporter
 
-A Chrome extension that allows you to export Claude's knowledge base documents to Markdown format for use in Obsidian.
+A Chrome extension to export Claude.ai knowledge base documents to Markdown.
 
 ## Features
 
-- Adds an "Export to Obsidian" button to Claude's knowledge base interface
-- Extracts all documents and converts them to Markdown format
-- Generates a ZIP file containing all documents
-- Creates an index file for easy navigation in Obsidian
+- Automatically detects Claude Knowledge Base / Project pages
+- Adds an "Export to Obsidian" button to the interface
+- Extracts document titles and content
+- Converts to Markdown format with YAML frontmatter
+- Packages all documents into a ZIP file named after the project
+- Compatible with Obsidian, Logseq, and other Markdown-based knowledge management systems
 
 ## Installation
 
-Since this extension is not published to the Chrome Web Store, you'll need to install it in developer mode:
-
-1. Download or clone this repository
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable "Developer mode" using the toggle in the top-right corner
-4. Click "Load unpacked" and select the folder containing this extension
+1. Download the latest release ZIP file
+2. Extract to a folder on your computer
+3. Open Chrome and navigate to `chrome://extensions/`
+4. Enable "Developer mode" (toggle in top right)
+5. Click "Load unpacked" and select the extracted folder
 
 ## Usage
 
-1. Navigate to your Claude knowledge base
-2. Look for the "Export to Obsidian" button (usually in the header area)
-3. Click the button to start the export process
-4. Wait for the export to complete
-5. When prompted, save the ZIP file
-6. Extract the ZIP file to your Obsidian vault
+1. Navigate to a Claude Knowledge Base project page (e.g., https://claude.ai/project/...)
+2. Click the "Export to Obsidian" button that appears next to other project controls
+3. The extension will process all documents and download a ZIP file
+4. Extract the ZIP file to your Obsidian vault or other Markdown system
+
+## Project Story
+
+Read the creative origin story of this project in our blog: [The Digital Bards: A Tale of Two Times](/blog/digital_bards.md)
 
 ## Development
 
-This extension is designed to work with Claude's knowledge base interface. If Claude updates their interface, the extension may need to be updated to match the new DOM structure.
+### Prerequisites
 
-The main components are:
+- Chrome browser
+- Basic knowledge of JavaScript, HTML, and CSS
 
+### Building
+
+Run the included build script to package the extension:
+
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+### Technical Structure
+
+- `content.js`: Main script that handles document extraction
+- `background.js`: Service worker for ZIP creation and download
+- `popup.html/js`: User interface for the extension
 - `manifest.json`: Extension configuration
-- `content.js`: Script that runs on the Claude website to extract documents
-- `background.js`: Script that handles ZIP creation and downloading
-- `popup.html` and `popup.js`: Extension popup interface
-- `styles.css`: Styles for the export button and status messages
 
 ## License
 
-MIT
+MIT License
+
+## Credits
+
+Created with assistance from Claude AI
