@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Knowledge Base Exporter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Export Claude.ai knowledge base documents to Markdown",
   "permissions": [
     "activeTab",
@@ -10,13 +10,19 @@
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["jszip.min.js", "content.js"],
+      "js": ["content.js"],
       "run_at": "document_end"
     }
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["jszip.min.js"],
+      "matches": ["https://claude.ai/*"]
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -29,11 +35,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["jszip.min.js"],
-      "matches": ["https://claude.ai/*"]
-    }
-  ]
+  }
 }
