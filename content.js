@@ -1,41 +1,25 @@
-// Dynamically load JSZip library
-function loadJSZip() {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('jszip.min.js');
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load JSZip library'));
-    document.head.appendChild(script);
-  });
-}
-
 // Enhanced Claude Knowledge Base Exporter Content Script
+
 class ClaudeKnowledgeBaseExporter {
   constructor() {
     this.pageObserver = null;
     this.debugMode = true;
-    this.jsZipLoaded = false;
   }
 
   // Logging method
   log(message, level = 'info') {
-    const logLevels = {
-      error: console.error,
-      warn: console.warn,
-      info: console.log,
-      debug: console.log
-    };
-    const logMethod = logLevels[level] || console.log;
+    const logMethod = level === 'error' ? console.error : 
+                      level === 'warn' ? console.warn : 
+                      console.log;
     logMethod(`[Claude KB Exporter] ${message}`);
   }
 
   // Main export method
   async handleExport() {
     try {
-      // Ensure JSZip is loaded
-      if (!this.jsZipLoaded) {
-        await loadJSZip();
-        this.jsZipLoaded = true;
+      // Ensure JSZip is available globally
+      if (typeof JSZip === 'undefined') {
+        throw new Error('JSZip library not loaded');
       }
 
       this.log('Export process started', 'info');
