@@ -57,25 +57,91 @@ class ClaudeKnowledgeBaseExporter {
 
       this.log(`Found ${documentElements.length} documents`, 'info');
 
-      // Extract and process documents
-      const documents = await Promise.all(
-        documentElements.map(async (element, index) => {
+      // Process documents sequentially to avoid popup handling issues
+      const documents = [];
+      
+      for (let i = 0; i < documentElements.length; i++) {
+        const element = documentElements[i];
+        try {
+          this.log(`Processing document ${i + 1}/${documentElements.length}`, 'debug');
+          
+          // Try to find the button that opens the document
+          let documentButton = null;
+          
           try {
-            this.log(`Processing document ${index + 1}/${documentElements.length}`, 'debug');
-            const title = this.extractDocumentTitle(element);
-            const content = await this.extractDocumentContent(element);
+            // Look for buttons within the list item
+            const buttons = element.querySelectorAll('button');
+            if (buttons.length > 0) {
+              // If multiple buttons, prefer ones with text like "Open" or "View"
+              for (const button of buttons) {
+                const buttonText = button.textContent.toLowerCase();
+                if (buttonText.includes('open') || buttonText.includes('view') || buttonText.includes('edit')) {
+                  documentButton = button;
+                  break;
+                }
+              }
+              
+              // If no specific button found, use the first one
+              if (!documentButton) {
+                documentButton = buttons[0];
+              }
+            }
             
-            this.log(`Extracted document: ${title}`, 'debug');
-            return { title, content };
-          } catch (docError) {
-            this.log(`Error processing document ${index}: ${docError.message}`, 'warn');
-            return null;
+            // If no button found, try the specific XPath
+            if (!documentButton) {
+              const buttonXPath = ".//div[2]/button";
+              const buttonResult = document.evaluate(
+                buttonXPath,
+                element,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+              );
+              documentButton = buttonResult.singleNodeValue;
+            }
+          } catch (buttonError) {
+            this.log(`Error finding button: ${buttonError.message}`, 'debug');
           }
-        })
-      );
+          
+          // If no button found, use the element itself
+          if (!documentButton) {
+            documentButton = element;
+          }
+          
+          // Click to open the document
+          documentButton.click();
+          
+          // Wait for the popup to appear
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          // Extract title and content
+          const title = await this.extractDocumentTitle(element);
+          const content = await this.extractDocumentContent(element);
+          
+          this.log(`Extracted document: ${title}`, 'debug');
+          documents.push({ title, content });
+          
+          // Close the popup if possible (look for a close button)
+          try {
+            const closeButton = document.querySelector('div[role="dialog"] button[aria-label="Close"], .modal button.close, div[role="dialog"] button');
+            if (closeButton) {
+              closeButton.click();
+              // Wait for popup to close
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          } catch (closeError) {
+            this.log(`Error closing popup: ${closeError.message}`, 'debug');
+            // Try pressing Escape key as fallback
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27 }));
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } catch (docError) {
+          this.log(`Error processing document ${i}: ${docError.message}`, 'warn');
+        }
+      }
 
       // Filter out failed document extractions
-      const validDocuments = documents.filter(doc => doc !== null);
+      const validDocuments = documents.filter(doc => doc !== null && doc.title && doc.content);
 
       if (validDocuments.length === 0) {
         throw new Error('No valid documents could be extracted');
@@ -146,30 +212,68 @@ class ClaudeKnowledgeBaseExporter {
 
   // Document element selection - primary methods
   findDocumentElements() {
-    // Try multiple selector strategies
-    const selectorStrategies = [
-      // Direct test IDs
+    // First, try the exact XPath for document list items
+    try {
+      const listItemXPath = "/html/body/div[2]/div/div/main/div[2]/div/div/div[2]/ul/li";
+      const result = document.evaluate(
+        listItemXPath,
+        document,
+        null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+        null
+      );
+      
+      if (result && result.snapshotLength > 0) {
+        const elements = [];
+        for (let i = 0; i < result.snapshotLength; i++) {
+          elements.push(result.snapshotItem(i));
+        }
+        
+        this.log(`Found ${elements.length} documents using exact XPath`, 'info');
+        return elements;
+      }
+    } catch (error) {
+      this.log(`Error finding documents with exact XPath: ${error.message}`, 'debug');
+    }
+    
+    // Try a more generic approach to find the list
+    try {
+      // Find the main content area
+      const mainElement = document.querySelector('main');
+      if (mainElement) {
+        // Look for any list element within the main content
+        const listElements = mainElement.querySelectorAll('ul, ol');
+        
+        for (const list of listElements) {
+          const items = list.querySelectorAll('li');
+          if (items.length > 0) {
+            this.log(`Found ${items.length} documents in list`, 'info');
+            return Array.from(items);
+          }
+        }
+      }
+    } catch (error) {
+      this.log(`Error finding list elements: ${error.message}`, 'debug');
+    }
+    
+    // Continue with other selectors if the XPath approach fails
+    const claudeSelectors = [
+      // Try specific Claude Knowledge Base selectors
+      'ul > li', // Most basic list item selector
+      'ol > li',
+      '[data-testid="project-document-list"] li',
+      '[data-testid="document-list"] li',
       '[data-testid="project-document-item"]',
       '[data-testid="document-list-item"]',
-      
-      // Generic list items in document context
-      '[role="list"] [role="listitem"]',
-      
-      // Document-specific attributes
-      '[data-document-id]',
-      '[data-item-type="document"]',
-      
-      // Class-based selectors
-      '.document-item',
-      '.document-list-item'
+      '[role="list"] [role="listitem"]'
     ];
 
-    for (const selector of selectorStrategies) {
+    for (const selector of claudeSelectors) {
       try {
         const elements = document.querySelectorAll(selector);
         
         if (elements && elements.length > 0) {
-          this.log(`Found ${elements.length} documents using selector: ${selector}`, 'debug');
+          this.log(`Found ${elements.length} documents using selector: ${selector}`, 'info');
           return Array.from(elements);
         }
       } catch (error) {
@@ -177,38 +281,7 @@ class ClaudeKnowledgeBaseExporter {
       }
     }
 
-    // Try XPath selectors as a fallback
-    const xpathStrategies = [
-      "//div[contains(@class, 'document')]",
-      "//li[contains(@role, 'listitem')]",
-      "//div[contains(@data-testid, 'document')]"
-    ];
-
-    for (const xpath of xpathStrategies) {
-      try {
-        const result = document.evaluate(
-          xpath, 
-          document, 
-          null, 
-          XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, 
-          null
-        );
-        
-        if (result && result.snapshotLength > 0) {
-          const elements = [];
-          for (let i = 0; i < result.snapshotLength; i++) {
-            elements.push(result.snapshotItem(i));
-          }
-          
-          this.log(`Found ${elements.length} documents using XPath: ${xpath}`, 'debug');
-          return elements;
-        }
-      } catch (error) {
-        this.log(`Error with XPath ${xpath}: ${error.message}`, 'debug');
-      }
-    }
-
-    this.log('No document elements found with primary selectors', 'warn');
+    this.log('No document elements found with primary methods, will try fallbacks', 'warn');
     return [];
   }
 
@@ -298,8 +371,36 @@ class ClaudeKnowledgeBaseExporter {
   }
 
   // Title extraction with multiple fallbacks
-  extractDocumentTitle(element) {
-    // Try various selectors for title elements
+  async extractDocumentTitle(element) {
+    // First try to get title from the popup header using XPath
+    try {
+      // We need to wait briefly for the popup to open after click
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Get title from the popup header using XPath
+      const titleXPath = "/html/body/div[4]/div/div/div[1]/h2";
+      const titleResult = document.evaluate(
+        titleXPath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      
+      const titleElement = titleResult.singleNodeValue;
+      
+      if (titleElement) {
+        const title = titleElement.textContent.trim();
+        if (title) {
+          this.log(`Found title in popup header: ${title}`, 'debug');
+          return title;
+        }
+      }
+    } catch (error) {
+      this.log(`Error finding title with XPath: ${error.message}`, 'debug');
+    }
+    
+    // Try various selectors for title elements as fallbacks
     const titleSelectors = [
       '[data-testid="document-title"]',
       '[data-testid="title"]',
@@ -361,83 +462,183 @@ class ClaudeKnowledgeBaseExporter {
   // Content extraction with click handling
   async extractDocumentContent(element) {
     try {
-      // Try to click on the element to open the document
-      this.log('Clicking element to access content', 'debug');
+      // Find the correct button to click using the provided XPath or a more generic approach
+      let documentButton = null;
       
-      // Store the current document for comparison
-      const currentUrl = window.location.href;
-      
-      // Click the element
-      element.click();
-      
-      // Wait for content to load or navigation to occur
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Check if we've navigated to a new page
-      if (window.location.href !== currentUrl) {
-        this.log('Navigation detected, extracting from new page', 'debug');
+      try {
+        // Try to find the button using the specific XPath
+        const buttonXPath = "//div[2]/div/div/main/div[2]/div/div/div[2]/ul/li/div/div[2]/div/div[1]/div[2]/button";
+        const result = document.evaluate(
+          buttonXPath,
+          document,
+          null,
+          XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+          null
+        );
         
-        // If we navigated, extract from the current page's main content area
-        const contentSelectors = [
-          '[data-testid="document-content"]',
-          '[role="article"]',
-          'main',
-          'article',
-          '.document-content'
-        ];
-        
-        for (const selector of contentSelectors) {
-          const contentElement = document.querySelector(selector);
-          if (contentElement) {
-            const content = contentElement.textContent.trim();
-            if (content) {
-              return content;
+        if (result.snapshotLength > 0) {
+          // If multiple buttons found, use the one closest to our element
+          let closestButton = null;
+          let closestDistance = Infinity;
+          
+          for (let i = 0; i < result.snapshotLength; i++) {
+            const button = result.snapshotItem(i);
+            if (element.contains(button) || button.contains(element)) {
+              documentButton = button;
+              break;
             }
+            
+            // Calculate approximate distance between elements
+            const buttonRect = button.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+            const distance = Math.sqrt(
+              Math.pow(buttonRect.left - elementRect.left, 2) + 
+              Math.pow(buttonRect.top - elementRect.top, 2)
+            );
+            
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              closestButton = button;
+            }
+          }
+          
+          if (!documentButton && closestButton) {
+            documentButton = closestButton;
           }
         }
-      } else {
-        // We didn't navigate, look for a modal or expanded view
-        this.log('Looking for modal or expanded content view', 'debug');
+      } catch (xpathError) {
+        this.log(`Error finding button with XPath: ${xpathError.message}`, 'debug');
+      }
+      
+      // If XPath approach failed, try to find any button within the element
+      if (!documentButton) {
+        documentButton = element.querySelector('button') || element;
+      }
+      
+      this.log('Clicking to open document popup', 'debug');
+      documentButton.click();
+      
+      // Wait for popup to appear
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Get content using the specific XPath for the content area
+      const contentXPath = "/html/body/div[4]/div/div/div[2]";
+      const contentResult = document.evaluate(
+        contentXPath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      
+      const contentElement = contentResult.singleNodeValue;
+      
+      if (contentElement) {
+        this.log('Found content element using specific XPath', 'debug');
         
-        const modalSelectors = [
-          'div[role="dialog"]',
-          '.modal', 
-          '.popup',
-          '[data-testid="document-modal"]'
-        ];
-        
-        for (const selector of modalSelectors) {
-          const modalElement = document.querySelector(selector);
-          if (modalElement) {
-            const content = modalElement.textContent.trim();
-            if (content) {
-              return content;
-            }
-          }
+        // Get the full text content
+        const content = contentElement.textContent.trim();
+        if (content) {
+          this.log('Successfully extracted content', 'debug');
+          return content;
         }
       }
       
-      // If we couldn't find content in a modal or after navigation,
-      // fall back to the element's own content
-      return element.textContent.trim();
+      // Fallback: try to find text nodes directly using the provided XPath
+      try {
+        const textXPath = "/html/body/div[4]/div/div/div[2]/text()";
+        const textResult = document.evaluate(
+          textXPath,
+          document,
+          null,
+          XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+          null
+        );
+        
+        if (textResult.snapshotLength > 0) {
+          let fullText = '';
+          for (let i = 0; i < textResult.snapshotLength; i++) {
+            fullText += textResult.snapshotItem(i).textContent;
+          }
+          
+          if (fullText.trim()) {
+            this.log('Extracted content from text nodes', 'debug');
+            return fullText.trim();
+          }
+        }
+      } catch (textXPathError) {
+        this.log(`Error extracting text nodes: ${textXPathError.message}`, 'debug');
+      }
+      
+      // If the specific XPath approach fails, try more generic selectors
+      this.log('Specific XPath failed, trying generic popup content selectors', 'debug');
+      
+      const modalElement = document.querySelector('div[role="dialog"], .modal, .popup');
+      if (modalElement) {
+        // Get all text within the modal, but exclude the title section
+        const titleElement = modalElement.querySelector('h1, h2, h3, [role="heading"]');
+        if (titleElement) {
+          // Create a clone of the modal without the title
+          const clone = modalElement.cloneNode(true);
+          const clonedTitle = clone.querySelector('h1, h2, h3, [role="heading"]');
+          if (clonedTitle && clonedTitle.parentNode) {
+            clonedTitle.parentNode.removeChild(clonedTitle);
+          }
+          
+          const content = clone.textContent.trim();
+          if (content) {
+            this.log('Extracted content from modal (excluding title)', 'debug');
+            return content;
+          }
+        }
+        
+        // If title removal approach didn't work, just get all text
+        const content = modalElement.textContent.trim();
+        if (content) {
+          this.log('Extracted raw content from modal', 'debug');
+          return content;
+        }
+      }
+      
+      // Last resort fallback
+      this.log('Could not extract content with any method', 'warn');
+      return element.textContent.trim() || 'No content could be extracted';
       
     } catch (error) {
       this.log(`Error extracting content: ${error.message}`, 'warn');
-      // Return the element's text content as a fallback
-      return element.textContent.trim();
+      return 'Error extracting content: ' + error.message;
     }
   }
 
   // Markdown conversion
   convertToMarkdown(document) {
     try {
+      // Get content that may be HTML or text
+      let cleanContent = document.content;
+      
+      // Check if the content is HTML (contains HTML tags)
+      if (cleanContent.includes('<') && cleanContent.includes('>')) {
+        // Simple HTML to text conversion for common elements
+        this.log('Content appears to be HTML, converting to markdown', 'debug');
+        
+        // This is a simple conversion that preserves the text content
+        // Remove HTML tags while preserving line breaks
+        cleanContent = cleanContent
+          .replace(/<(p|div|h\d|br)[^>]*>/gi, '')  // Remove opening tags
+          .replace(/<\/(p|div|h\d)>/gi, '\n\n')    // Replace closing tags with new lines
+          .replace(/<br\s*\/?>/gi, '\n')           // Replace <br> with new lines
+          .replace(/<[^>]*>/g, '')                 // Remove all other HTML tags
+          .replace(/\n{3,}/g, '\n\n')              // Normalize excessive newlines
+          .trim();
+      }
+      
       // Create markdown with frontmatter
       const markdownContent = `---
 title: "${document.title.replace(/"/g, '\\"')}"
 date: "${new Date().toISOString()}"
 ---
 
-${document.content}`;
+${cleanContent}`;
 
       // Sanitize filename - replace problematic characters
       const sanitizedFilename = document.title
