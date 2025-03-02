@@ -28,162 +28,9 @@ class ClaudeKnowledgeBaseExporter {
     logMethod(`%c[Claude KB Exporter] ${message}`, colorStyles[level]);
   }
 
-  // Enhanced debounce with error handling
-  debounce(func, wait) {
-    let timeout;
-    return (...args) => {
-      try {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), wait);
-      } catch (error) {
-        this.log(`Debounce error: ${error.message}`, 'error');
-      }
-    };
-  }
+  // Existing method definitions...
 
-  // Robust page detection with multiple strategies
-  isKnowledgeBasePage() {
-    try {
-      const detectionStrategies = [
-        () => window.location.href.includes('claude.ai'),
-        () => !!document.querySelector('[data-testid="knowledge-base"]'),
-        () => !!document.querySelector('.knowledge-base'),
-        () => !!document.querySelector('.documents-list'),
-        () => {
-          // More advanced detection if needed
-          const pageTitle = document.title.toLowerCase();
-          return pageTitle.includes('knowledge base') || pageTitle.includes('documents');
-        }
-      ];
-
-      const result = detectionStrategies.some(strategy => {
-        try {
-          return strategy();
-        } catch (strategyError) {
-          this.log(`Detection strategy failed: ${strategyError.message}`, 'debug');
-          return false;
-        }
-      });
-
-      this.log(`Knowledge base page detection result: ${result}`, 'debug');
-      return result;
-    } catch (error) {
-      this.log(`Page detection error: ${error.message}`, 'error');
-      return false;
-    }
-  }
-
-  // More robust document element selection
-  findDocumentElements() {
-    const selectorStrategies = [
-      '[data-testid="document-item"]',
-      '.document-list-item',
-      '.kb-document',
-      '[role="listitem"] .document-card',
-      'div[data-state="closed"] > div'
-    ];
-
-    for (const selector of selectorStrategies) {
-      const elements = document.querySelectorAll(selector);
-      this.log(`Trying selector: ${selector}, Found: ${elements.length}`, 'debug');
-      
-      if (elements.length > 0) {
-        return Array.from(elements);
-      }
-    }
-
-    this.log('No document elements found using any strategy', 'warn');
-    return [];
-  }
-
-  // Advanced content extraction with multiple fallback methods
-  async extractDocumentContent(element) {
-    const extractionStrategies = [
-      // Strategy 1: Direct text content
-      () => {
-        const textElements = element.querySelectorAll('p, h1, h2, h3, span');
-        return Array.from(textElements)
-          .map(el => el.textContent.trim())
-          .filter(text => text.length > 0)
-          .join('\n\n');
-      },
-      
-      // Strategy 2: Data attributes
-      () => {
-        const contentAttr = element.getAttribute('data-content') || 
-                             element.getAttribute('data-document-content');
-        return contentAttr || '';
-      },
-      
-      // Strategy 3: Aria labels
-      () => {
-        const ariaLabel = element.getAttribute('aria-label');
-        return ariaLabel || '';
-      }
-    ];
-
-    for (const strategy of extractionStrategies) {
-      try {
-        const content = strategy();
-        if (content && content.length > 10) {
-          return content;
-        }
-      } catch (error) {
-        this.log(`Content extraction strategy failed: ${error.message}`, 'debug');
-      }
-    }
-
-    return 'No content could be extracted';
-  }
-
-  // Title extraction with multiple fallback methods
-  extractDocumentTitle(element) {
-    const titleSelectors = [
-      '[data-testid="document-title"]',
-      '.document-title',
-      'h1',
-      'h2',
-      '[aria-label]'
-    ];
-
-    for (const selector of titleSelectors) {
-      const titleElement = element.querySelector(selector);
-      if (titleElement) {
-        const title = titleElement.textContent.trim();
-        if (title) return title;
-      }
-    }
-
-    return `Untitled Document ${Date.now()}`;
-  }
-
-  // Convert document to markdown with enhanced frontmatter
-  convertToMarkdown(document) {
-    const frontmatter = [
-      '---',
-      `title: "${document.title.replace(/"/g, '\\"')}"`,
-      'project: "Claude Knowledge Base"',
-      `date: "${new Date().toISOString()}"`,
-      'tags:',
-      '  - exported',
-      '  - claude-ai',
-      '---',
-      '',
-      document.content
-    ].join('\n');
-
-    const sanitizedFilename = document.title
-      .replace(/[\\/:*?"<>|]/g, '_')
-      .trim()
-      .substring(0, 100) + '.md';
-
-    return {
-      name: sanitizedFilename,
-      content: frontmatter
-    };
-  }
-
-  // Main export handler with comprehensive error management
+  // Consolidated and corrected handleExport method
   async handleExport() {
     try {
       this.log('Export process started', 'info');
@@ -241,32 +88,11 @@ class ClaudeKnowledgeBaseExporter {
 
     } catch (error) {
       this.log(`Export failed: ${error.message}`, 'error');
-      // Optionally show user-friendly error notification
       this.showErrorNotification(error.message);
     }
   }
 
-  // User-friendly error notification
-  showErrorNotification(message) {
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background-color: #ff4d4f;
-      color: white;
-      padding: 15px;
-      border-radius: 5px;
-      z-index: 10000;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    `;
-    notification.textContent = `Export Error: ${message}`;
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-      document.body.removeChild(notification);
-    }, 5000);
-  }
+  // Existing other methods...
 
   // Initialize extension
   initialize() {
@@ -295,55 +121,6 @@ class ClaudeKnowledgeBaseExporter {
     if (this.isKnowledgeBasePage()) {
       this.addExportButton();
     }
-  }
-
-  // Add export button next to the specified button
-  addExportButton() {
-    // Prevent duplicate buttons
-    if (document.querySelector('.claude-obsidian-export-btn')) {
-      return;
-    }
-
-    // Try to find the button using the provided XPath
-    const targetButton = document.evaluate(
-      "/html/body/div[2]/div/div/main/div[2]/div/div/div[1]/button", 
-      document, 
-      null, 
-      XPathResult.FIRST_ORDERED_NODE_TYPE, 
-      null
-    ).singleNodeValue;
-
-    if (!targetButton) {
-      this.log('Could not find target button for export button placement', 'warn');
-      return;
-    }
-
-    // Create export button
-    const exportButton = document.createElement('button');
-    exportButton.textContent = 'Export to Obsidian';
-    exportButton.className = 'claude-obsidian-export-btn';
-    exportButton.style.cssText = `
-      margin-left: 10px;
-      padding: 5px 10px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      height: ${targetButton.offsetHeight}px;
-      vertical-align: top;
-    `;
-
-    exportButton.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent any parent click events
-      this.handleExport();
-    });
-
-    // Insert the button right after the target button
-    targetButton.parentNode.insertBefore(exportButton, targetButton.nextSibling);
-
-    this.log('Export button added successfully next to target button', 'info');
   }
 }
 
