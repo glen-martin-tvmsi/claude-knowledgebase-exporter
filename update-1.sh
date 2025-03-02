@@ -1,3 +1,9 @@
+## Create build.sh script
+create_build_script() {
+   echo -e "\n${YELLOW}Creating build.sh script...${NC}"
+   backup_file "build.sh"
+   
+   cat > build.sh << 'EOF'
 #!/bin/bash
 
 # Claude Knowledge Base Exporter - Build Script
@@ -271,3 +277,46 @@ if [ -n "$GITHUB_CODESPACE_NAME" ] || [ -n "$CODESPACE_NAME" ]; then
 fi
 
 echo -e "\n${BLUE}======================================${NC}"
+EOF
+   
+   # Make the script executable
+   chmod +x build.sh
+   echo -e "${GREEN}Created and made executable: build.sh${NC}"
+}
+
+# Create placeholder icons if needed
+create_placeholder_icons() {
+   echo -e "\n${YELLOW}Setting up placeholder icons...${NC}"
+   mkdir -p icons
+   
+   # Create simple placeholder icons if they don't exist
+   for size in 16 48 128; do
+       icon_file="icons/icon${size}.png"
+       if [ ! -f "$icon_file" ]; then
+           echo "Placeholder icon size ${size}x${size}" > "$icon_file"
+           echo -e "${YELLOW}Created placeholder for: $icon_file${NC}"
+           echo -e "${YELLOW}Remember to replace with actual icon files before publishing${NC}"
+       else
+           echo -e "${GREEN}Icon already exists: $icon_file${NC}"
+       fi
+   done
+}
+
+# Run all the update functions
+update_manifest
+update_content_js
+update_background_js
+update_popup_html
+update_popup_js
+update_styles_css
+update_readme
+create_build_script
+create_placeholder_icons
+
+echo -e "\n${GREEN}=== Update Complete ===${NC}"
+echo -e "${GREEN}All files have been updated for the Claude Knowledge Base Exporter.${NC}"
+echo -e "${YELLOW}Next steps:${NC}"
+echo -e "1. Run ${BLUE}./build.sh${NC} to create the extension package"
+echo -e "2. Commit and push your changes to GitHub"
+echo -e "3. Load the extension in Chrome from the builds directory"
+echo -e "${BLUE}======================================${NC}"
